@@ -1,0 +1,53 @@
+# dsh-nushell-only — profile bundle patch (dsh 0.1.5-rc.2)
+#
+# 1. Disable the two first-party `ctx.shell` providers. Exactly one provider may
+#    register that service, so replacing both rows with the Nushell executor is
+#    what makes Nushell the harness-wide shell for every consumer: the model
+#    tools, background jobs, hook bridges, tmux context, and in-process callers.
+# 2. Insert the Nushell executor and the Nushell teaching layer.
+#
+# The model-facing shell tools (`tool-bash` / `tool-pwsh`) stay mounted: they are
+# dialect-neutral consumers of `ctx.shell`, so they keep working unchanged while
+# the executor underneath them runs Nushell. The teaching layer rewrites their
+# descriptions (and adds the syntax guide to the system prompt) so the model is
+# never told it is writing bash or PowerShell.
+
+- id: bash-sandbox
+  disabled: true
+
+- id: pwsh-sandbox
+  disabled: true
+
+- insert:
+    # The one and only `ctx.shell` provider: every command runs as
+    # `nu --no-config-file -c "<command>"` under the same sandbox policy,
+    # timeout, output-cap, spill, background-job, and cancellation machinery the
+    # first-party executors use.
+    - id: nushell-executor
+      name: dsh-nushell-only/executor
+      config:
+        # Budgets mirror dsh's own `bash-sandbox` row defaults.
+        timeoutMs: 60000
+        maxTimeoutMs: 600000
+        maxOutputBytes: 64000
+        graceMs: 3000
+        # Nu resolution: config -> $DSH_NU_PATH -> `nu` on PATH.
+        # nuPath: C:\Users\me\AppData\Local\Programs\nu\bin\nu.exe
+        # Refuse handing a command to another shell (the "only Nushell" rule).
+        enforceNushellOnly: true
+        # Boot fails when `nu` cannot be resolved; set false to degrade instead.
+        requireNu: true
+        # Run `nu --version` once at boot (reported in logs and in the guide).
+        verifyNu: true
+
+    # Teaching layer: mandatory shell rules as a prompt section, the Nushell
+    # syntax guide, and honest `bash`/`pwsh` tool descriptions.
+    - id: nushell-teaching
+      name: dsh-nushell-only/teaching
+      config:
+        # full | compact | off
+        guide: full
+        # Rewrite the `bash`/`pwsh` tool descriptions to describe Nushell.
+        rewriteToolDescriptions: true
+        # Add the short "shell: Nushell only" rules section.
+        rules: true

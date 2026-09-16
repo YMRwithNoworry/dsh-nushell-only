@@ -23,6 +23,29 @@ Three cooperating pieces:
    - Rewrites the model-facing `bash` / `pwsh` tool descriptions and their `command` parameter into the Nushell dialect. The tool **names** stay the same so presets, `toolOrder` lists, and instruction files keep working.
    The teaching layer is host-plane, so it also reaches agents composed from an agent preset (verified by the integration test).
 
+4. **Dialect preflight and failure hints (correction).** Owning `ctx.shell` is not enough: the model still writes commands that are valid bash or PowerShell, are *not* a shell handoff, and therefore reach `nu` as a parse error it has to decode — `2>&1`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`, and friends.
+   The preflight refuses those **before spawning** and puts the Nushell spelling in the error text (`2>&1` → `o+e>`, `$x = 1` → `let x = 1`, `Get-ChildItem` → `ls`). Strings, raw strings, and comments are blanked first, so `print "a && b"`, `open --raw 'p?ath'`, and `^Get-ChildItem` (an explicit external) are never misread. Unix tools (`grep`, `head`, `cat`) are deliberately **not** refused — on POSIX they are legitimate external programs — they only feed the "that program is not installed here" hint.
+   When a call fails anyway, one `Nushell hint (…)` line is appended to stderr, chosen from the error Nushell actually reported (missing path, absent column, wrong input type, unknown flag, empty glob, unavailable external), including the trap that **a failing external command aborts the rest of the command and prints nothing at all** — measured on Nushell 0.115, and visible in transcripts as an unexplained `[exit code: 1]`.
+
+## Why these rules: failures from real sessions
+
+The rules are not invented. Across **109 sessions and 8168 shell calls** in this machine's `~/.dsh/sessions`, 1503 shells calls failed with a Nushell error code:
+
+| Observed error | Count | The habit being written |
+|---|---|---|
+| `nu::shell::external_command` | 423 | `grep`, `head`, `cat`, `Get-Content`, `docker` (not builtins, not installed) |
+| `nu::parser::unknown_flag` | 140 | `ls -a`, `ls -R`, `mkdir -p`, `select -First 20`, `head -40` |
+| `nu::parser::variable_not_found` | 137 | `$x = 1`, `foreach`, `$env:REF = …` |
+| `nu::shell::io::not_found` | 128 | `ls <missing>` — bash prints an error, Nushell aborts |
+| `nu::parser::shell_outerr` | 85 | `2>&1`, `2>$null`, `2>/dev/null` |
+| `nu::shell::column_not_found` | 53 | `$env.LAST_EXIT_CODE`, `$env.HOME` |
+| `nu::shell::only_supports_this_input_type` | 35 | `$env \| where name =~ …` (`$env` is a record) |
+| `nu::parser::deprecated` | 29 | `str downcase`, `get -i`, `select -First` |
+| `nu::shell::eval_block_with_input` | 28 | wrong input inside an `each` / `where` closure |
+| `nu::parser::extra_positional` | 20 | `glob "**/*.java" "D:/dir"`, `each { … } [list]` |
+
+Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code → hint table (hint). The refusal cases in `test/dialect.test.mjs` are **real failing commands from that table**, and the hint cases are **real stderr samples** — a regression suite against observed failures rather than imagined ones.
+
 ## Install
 
 ```sh
@@ -64,6 +87,8 @@ Channel budgets, the guard, and the teaching layer are all composition config:
     maxOutputBytes: 64000
     graceMs: 3000
     enforceNushellOnly: true
+    dialectLint: true       # refuse foreign-dialect habits before spawning, with the Nushell form
+    dialectHints: true      # append one actionable Nushell hint to a failed call's stderr
     requireNu: true
     verifyNu: true
 
@@ -80,7 +105,9 @@ Channel budgets, the guard, and the teaching layer are all composition config:
 | `nuPath` | `$DSH_NU_PATH`, else `nu` | Nushell executable: field, then environment, then PATH |
 | `nuArgs` | `['--no-config-file','-c']` | Argv prefix; the command is appended last |
 | `enforceNushellOnly` | `true` | The foreign-shell guard |
-| `foreignShellAllowlist` | `[]` | Whole-command regex strings exempt from the guard |
+| `foreignShellAllowlist` | `[]` | Whole-command regex strings exempt from the guard *and* the dialect lint |
+| `dialectLint` | `true` | Refuse bash/PowerShell habits before spawning (`2>&1`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`), naming the Nushell form |
+| `dialectHints` | `true` | Append one `Nushell hint (…)` line to a failed call's stderr, chosen by the Nushell error (including the silent non-zero-exit abort) |
 | `requireNu` | `true` | Fail boot when `nu` cannot be resolved |
 | `verifyNu` / `verifyTimeoutMs` | `true` / `10000` | Probe `nu --version` once at boot |
 
@@ -100,12 +127,14 @@ Sandboxing is unchanged: `danger-full-access` runs directly, confined modes stil
 ## Development
 
 ```sh
-node --test test/                 # 36 unit tests (guard, guide, teaching, executor argv/sandbox paths)
-node test/integration.mjs         # end to end: scratch DSH_HOME, profile install, real boot, 20 assertions
+node --test test/                 # 47 unit tests (guard, dialect preflight/hints, guide, teaching, executor argv/sandbox paths)
+node test/integration.mjs         # end to end: scratch DSH_HOME, profile install, real boot, 28 assertions
 node test/integration.mjs --mode workspace-write
 ```
 
-The integration test asserts the executor identity, `nu --version`, Nu builtin/table/external runs, non-zero exit reporting, the refusal, the prompt sections, the rewritten descriptions (including inside a **preset-scoped** assembly), and the sandbox facts. Point it at any CLI with `DSH_INTEGRATION_CLI=/path/to/@deepseek-ai/dsh/lib/bin.js`.
+The integration test asserts the executor identity, `nu --version`, Nu builtin/table/external runs, non-zero exit reporting, the foreign-shell refusal, **the dialect preflight refusing `2>&1` and `$x = 1` with the Nushell spelling**, **a failed call carrying a `Nushell hint`**, the prompt sections (rules, guide, translation table, failure catalogue), the rewritten descriptions (including inside a **preset-scoped** assembly), and the sandbox facts. Point it at any CLI with `DSH_INTEGRATION_CLI=/path/to/@deepseek-ai/dsh/lib/bin.js`.
+
+Known local caveat: under `--mode workspace-write` on this machine (dsh `0.1.5-rc.1`, Windows ACL sandbox) the "runs an external command" assertion fails with empty output, because a confined `^external` does not start. This is **not** caused by this plugin — a pristine checkout of the previous commit fails the same way (20/21); the current version reaches 27/28 with every added assertion passing. Use `danger-full-access` to verify the Nushell behaviour itself.
 
 `node dev/link-peers.mjs` links the `@deepseek-ai/*` peers out of a local dsh install for a checkout-based test run.
 

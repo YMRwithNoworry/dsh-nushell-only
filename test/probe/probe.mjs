@@ -134,6 +134,32 @@ export async function apply(ctx) {
     }
     record('refuses a foreign-shell handoff', /Nushell-only/.test(refused), refused)
 
+    // The dialect preflight: the habits that used to die as an opaque Nushell
+    // parse error are refused before a subprocess exists, and the refusal names
+    // the Nushell spelling.
+    let dialectRefusal = ''
+    try {
+      await shell.run(shell.resolve({ command: "ls 'D:/x' 2>&1 | select name" }))
+    } catch (error) {
+      dialectRefusal = error instanceof Error ? error.message : String(error)
+    }
+    record('refuses bash stderr redirection before running it', /Nushell-only shell: refusing a stderr-redirect/.test(dialectRefusal), dialectRefusal)
+    record('that refusal teaches the Nushell form', /o\+e>/.test(dialectRefusal) && /dialectLint: false/.test(dialectRefusal))
+
+    let assignmentRefusal = ''
+    try {
+      await shell.run(shell.resolve({ command: '$total = 1; print $total' }))
+    } catch (error) {
+      assignmentRefusal = error instanceof Error ? error.message : String(error)
+    }
+    record('refuses a bare `$x = 1` and teaches `let`', /refusing a bare-assignment/.test(assignmentRefusal) && /let total = /.test(assignmentRefusal), assignmentRefusal)
+
+    // Post-failure hinting: an error the preflight cannot predict still comes
+    // back with one actionable line naming the fix.
+    const hinted = await shell.run(shell.resolve({ command: "ls 'D:/definitely-missing-dir-nushell-only-probe'" }))
+    record('a failed call carries a Nushell hint', /Nushell hint \(path-not-found\)/.test(hinted.stderr.text), hinted.stderr.text.replace(/\s+/g, ' ').slice(0, 160))
+    record('the hint names a concrete fix', /path exists/.test(hinted.stderr.text))
+
     let assembly
     for (let attempt = 0; attempt < 100; attempt++) {
       assembly = await ctx.systemPrompt.assemble()
@@ -145,6 +171,8 @@ export async function apply(ctx) {
     record('system prompt carries the syntax guide', prompt.includes('Nushell syntax guide'))
     record('system prompt carries the translation table', prompt.includes('PowerShell → Nushell'))
     record('system prompt teaches the freshness contract', prompt.includes('workdir'))
+    record('system prompt carries the failure catalogue', prompt.includes('When Nushell refuses'))
+    record('system prompt warns that a failing external aborts the command', prompt.includes('aborts the whole command'))
 
     // A host composition (TUI, headless) keeps the shell tool globally; a web
     // composition mounts it per preset, which the scoped block above covers.

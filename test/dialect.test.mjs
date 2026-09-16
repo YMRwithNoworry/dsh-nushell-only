@@ -76,6 +76,8 @@ const ALLOWED = [
   'ls | where size > 1kb | sort-by size | reverse | first 5 | select name size',
   "['a' 'b'] | path join",
   'let p = (glob D:/code/*.md | get 0); if ($p | path exists) { open --raw $p | lines | last 3 }',
+  '$env.PATH = "x"; $env.PATH',
+  '$in | describe',
 ]
 
 test('refuses the dialect habits observed in real sessions', () => {

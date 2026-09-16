@@ -1,7 +1,7 @@
 {
   "name": "dsh-nushell-only",
-  "version": "0.1.0",
-  "description": "Nushell-only shell executor and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.5-rc.2): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, and the model is taught Nushell.",
+  "version": "0.2.0",
+  "description": "Nushell-only shell executor, dialect preflight, and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.5-rc.2): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, bash/PowerShell habits are refused before they spawn, a failed call carries an actionable Nushell hint, and the model is taught Nushell.",
   "license": "MIT",
   "author": "dsh-nushell-only contributors",
   "type": "module",

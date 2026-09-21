@@ -49,7 +49,10 @@ Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code
 ## Install
 
 ```sh
-# Install directly from GitHub into a profile (recommended; no npm publish required)
+# Install from npm (published)
+dsh plugin --profile web add dsh-nushell-only
+
+# Install directly from GitHub into a profile (to track the repo, or an unreleased commit)
 dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only
 
 # Pin a commit for reproducibility (optional; replace <sha>)
@@ -59,7 +62,7 @@ dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only#<sha>
 dsh plugin --profile web add file:/path/to/dsh-nushell-only
 ```
 
-Restart the profile afterwards. The npm package name `dsh-nushell-only` is not published yet; the GitHub form above needs no npm account. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
+Restart the profile afterwards. The npm package name `dsh-nushell-only` is published (currently `0.2.0`), and the GitHub and local-checkout forms work as well. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
 
 > **Remove an older `dsh-nushell` first.** Exactly one provider may register `ctx.shell`; a leftover shell bundle makes boot fail on a duplicate service:
 >

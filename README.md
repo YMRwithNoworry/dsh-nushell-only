@@ -52,7 +52,10 @@
 ## 安装
 
 ```sh
-# 从 GitHub 直接安装进某个 profile（推荐，不需要 npm 发布）
+# 从 npm 安装（已发布）
+dsh plugin --profile web add dsh-nushell-only
+
+# 从 GitHub 直接安装进某个 profile（想跟仓库走，或需要未发布的提交）
 dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only
 
 # 锁定提交可复现（可选；把 <sha> 换成 README 所在提交）
@@ -62,7 +65,7 @@ dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only#<sha>
 dsh plugin --profile web add file:/path/to/dsh-nushell-only
 ```
 
-安装后**重启该 profile**。npm 包名 `dsh-nushell-only` 目前尚未发布；上面的 GitHub 形式是无需 npm 账号即可使用的安装方式。`dsh plugin` 会把包登记进 `dsh.profile.bundles`（本包声明了 `dsh.bundle.patch`），补丁层会把上面两行插进组合树。
+安装后**重启该 profile**。npm 包名 `dsh-nushell-only` 已发布（当前 `0.2.0`），GitHub 与本地 checkout 形式同样可用。`dsh plugin` 会把包登记进 `dsh.profile.bundles`（本包声明了 `dsh.bundle.patch`），补丁层会把上面两行插进组合树。
 
 > **先卸掉旧的 `dsh-nushell`**：一个上下文只允许一个 `ctx.shell` 提供者。如果 profile 里已经有 `dsh-nushell`（或任何其他 shell 执行器 bundle），请先：
 >

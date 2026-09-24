@@ -1,0 +1,9 @@
+Error: nu::parser::assignment_requires_variable
+
+  x Assignment operations require a variable.
+   ,-[source:1:11]
+ 1 | let r = { a = 1 }
+   :           |
+   :           `-- needs to be a variable
+   `----
+  help: try assigning to a variable or a cell path of a variable

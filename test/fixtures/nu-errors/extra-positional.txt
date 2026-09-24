@@ -1,0 +1,9 @@
+Error: nu::parser::extra_positional
+
+  x Extra positional argument.
+   ,-[source:1:16]
+ 1 | glob "**/*.rs" "D:/code"
+   :                ^^^^|^^^^
+   :                    `-- extra positional argument
+   `----
+  help: Usage: glob {flags} <glob>

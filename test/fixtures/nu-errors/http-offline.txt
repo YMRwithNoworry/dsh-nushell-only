@@ -1,0 +1,8 @@
+Error: nu::shell::io::unexpected_eof
+
+  x I/O error
+   ,-[source:1:1]
+ 1 | http get 'https://definitely-not-a-real-host.invalid/x'
+   : ^^^^|^^^
+   :     `-- Unexpected end of file
+   `----

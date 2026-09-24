@@ -1,0 +1,11 @@
+Error: nu::shell::column_not_found
+
+  x Cannot find column 'nope'
+   ,-[source:1:1]
+ 1 | ls | get nope
+   : ^|       ^^|^
+   :  |         `-- column 'nope' is missing in one or more values
+   :  `-- value originates here
+   `----
+  help: If some rows have this column, try using 'nope?' for optional access,
+        or pre-fill using the `default` command

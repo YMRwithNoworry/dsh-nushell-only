@@ -1,0 +1,8 @@
+Error: nu::parser::keyword_missing_arg
+
+  x Missing argument to `in`.
+   ,-[source:1:9]
+ 1 | for f in [1 2]; do print $f
+   :         ^
+   :         `-- missing any value that follows in
+   `----

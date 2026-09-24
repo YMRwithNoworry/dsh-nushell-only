@@ -1,0 +1,18 @@
+Warning: nu::parser::deprecated
+
+  ! Command deprecated.
+   ,-[source:1:1]
+ 1 | str downcase
+   : ^^^^^^|^^^^^
+   :       `-- str downcase was deprecated in 0.114.0 and will be removed in a future release.
+   `----
+  help: Use `str lowercase` instead.
+
+Error: nu::shell::pipeline_mismatch
+
+  x Pipeline empty.
+   ,-[source:1:1]
+ 1 | str downcase
+   : ^^^^^^|^^^^^
+   :       `-- no input value was piped in
+   `----

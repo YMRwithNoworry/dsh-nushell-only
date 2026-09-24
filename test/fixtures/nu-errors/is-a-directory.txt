@@ -1,0 +1,9 @@
+Error: nu::shell::io::is_a_directory
+
+  x I/O error
+   ,-[source:1:12]
+ 1 | open --raw D:/
+   :            ^|^
+   :             `-- Is a directory
+   `----
+  help: The error occurred at 'D:\'

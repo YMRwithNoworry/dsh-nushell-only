@@ -1,0 +1,9 @@
+Error: nu::shell::error
+
+  x No matches found for DoNotExpand("D:/definitely-missing/**/*.md")
+   ,-[source:1:4]
+ 1 | ls 'D:/definitely-missing/**/*.md'
+   :    ^^^^^^^^^^^^^^^|^^^^^^^^^^^^^^^
+   :                   `-- Pattern, file or folder not found
+   `----
+  help: no matches found

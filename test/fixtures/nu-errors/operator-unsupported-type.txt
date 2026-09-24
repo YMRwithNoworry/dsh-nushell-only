@@ -1,0 +1,9 @@
+Error: nu::parser::operator_unsupported_type
+
+  x The '+' operator does not work on values of type 'list<int>'.
+   ,-[source:1:10]
+ 1 | print (1 + [1 2])
+   :          | ^^|^^
+   :          |   `-- list<int>
+   :          `-- does not support 'list<int>'
+   `----

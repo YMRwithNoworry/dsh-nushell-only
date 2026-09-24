@@ -1,0 +1,8 @@
+Error: nu::parser::error
+
+  x percent sigil requires a built-in command
+   ,-[source:1:12]
+ 1 | print 1 | %
+   `----
+  help: remove `%` to use normal resolution, or use `^` to run an external
+        command explicitly

@@ -1,0 +1,10 @@
+Error: nu::parser::operator_incompatible_types
+
+  x Types 'string' and 'int' are not compatible for the '+' operator.
+   ,-[source:1:8]
+ 1 | print ('a' + 1)
+   :        ^|^ | |
+   :         |  | `-- int
+   :         |  `-- does not operate between 'string' and 'int'
+   :         `-- string
+   `----

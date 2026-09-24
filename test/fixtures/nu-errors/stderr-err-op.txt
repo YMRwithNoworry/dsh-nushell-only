@@ -1,0 +1,8 @@
+Error: nu::parser::shell_err
+
+  x The '2>' shell operation is 'err>' in Nushell.
+   ,-[source:1:9]
+ 1 | print 1 2> out.txt
+   :         ^|
+   :          `-- use 'err>' instead of '2>' in Nushell
+   `----

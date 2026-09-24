@@ -1,0 +1,8 @@
+Error: nu::shell::needs_positive_value
+
+  x Negative value passed when positive one is required
+   ,-[source:1:12]
+ 1 | ls | first -3
+   :            ^|
+   :             `-- use a positive value
+   `----

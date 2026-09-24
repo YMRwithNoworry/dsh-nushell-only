@@ -26,9 +26,10 @@ Three cooperating pieces:
    - Rewrites the model-facing `bash` / `pwsh` tool descriptions and their `command` parameter into the Nushell dialect. The tool **names** stay the same so presets, `toolOrder` lists, and instruction files keep working.
    The teaching layer is host-plane, so it also reaches agents composed from an agent preset (verified by the integration test).
 
-4. **Dialect preflight and failure hints (correction).** Owning `ctx.shell` is not enough: the model still writes commands that are valid bash or PowerShell, are *not* a shell handoff, and therefore reach `nu` as a parse error it has to decode — `2>&1`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`, and friends.
-   The preflight refuses those **before spawning** and puts the Nushell spelling in the error text (`2>&1` → `o+e>`, `$x = 1` → `let x = 1`, `Get-ChildItem` → `ls`). Strings, raw strings, and comments are blanked first, so `print "a && b"`, `open --raw 'p?ath'`, and `^Get-ChildItem` (an explicit external) are never misread. Unix tools (`grep`, `head`, `cat`) are deliberately **not** refused — on POSIX they are legitimate external programs — they only feed the "that program is not installed here" hint.
-   When a call fails anyway, one `Nushell hint (…)` line is appended to stderr, chosen from the error Nushell actually reported (missing path, absent column, wrong input type, unknown flag, empty glob, unavailable external), including the trap that **a failing external command aborts the rest of the command and prints nothing at all** — measured on Nushell 0.115, and visible in transcripts as an unexplained `[exit code: 1]`.
+4. **Dialect preflight and failure hints (correction).** Owning `ctx.shell` is not enough: the model still writes commands that are valid bash or PowerShell, are *not* a shell handoff, and therefore reach `nu` — `2>&1`, `2>$null`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`, `select name, type`, and friends. Most of them die as a parse error; `2>$null` / `2>/dev/null` / `2>nul` / `2>>f` do something worse — Nushell 0.115.1 lexes them as ordinary words, so the program receives an extra argument and stderr is never suppressed. Silent misbehaviour is worth refusing precisely because it does not fail.
+   The preflight refuses them **before spawning** and puts the offending fragment, the whole command, and the Nushell spelling in the error text (`2>&1` → `o+e>`, `2>$null` → `e> nul` or `| complete`, `$x = 1` → `let x = 1`, `Get-ChildItem` → `ls`, `select name, type` → `select name type`). Strings, raw strings, and comments are blanked first — at Nushell's real comment boundaries, so `;# note 2>&1`, `{# 2>&1`, and `| # 2>&1` are data — which keeps `print "a && b"`, `open --raw 'p?ath'`, and `^Get-ChildItem` (an explicit external) safe. Cmdlets nested in `( … )` / `{ … }` (`print (Get-ChildItem -Recurse)`) are caught too. Unix tools (`grep`, `head`, `cat`) are deliberately **not** refused — on POSIX they are legitimate external programs — they only feed the "that program is not installed here" hint.
+   When a call fails anyway, one `Nushell hint (…)` line is appended to stderr, chosen from the error Nushell actually reported (missing path, absent column, missing name, wrong input type, unknown flag, empty glob, unavailable external, empty pipeline, `out+err>` used as a pipeline stage, `first -3`, `-ErrorAction`, `%{ … }`, `{ a = 1 }`, …), including the trap that **a failing external command aborts the rest of the command and prints nothing at all** — measured on Nushell 0.115, and visible in transcripts as an unexplained `[exit code: 1]`.
+   A spelling Nushell only *warns* about (`str downcase`, `get -i`) is **not** refused any more: blocking a command that runs wastes a turn, and the deprecation hint teaches the replacement instead.
 
 ## Why these rules: failures from real sessions
 
@@ -40,14 +41,24 @@ The rules are not invented. Across **109 sessions and 8168 shell calls** in this
 | `nu::parser::unknown_flag` | 140 | `ls -a`, `ls -R`, `mkdir -p`, `select -First 20`, `head -40` |
 | `nu::parser::variable_not_found` | 137 | `$x = 1`, `foreach`, `$env:REF = …` |
 | `nu::shell::io::not_found` | 128 | `ls <missing>` — bash prints an error, Nushell aborts |
-| `nu::parser::shell_outerr` | 85 | `2>&1`, `2>$null`, `2>/dev/null` |
+| `nu::parser::shell_outerr` | 85 | `2>&1`, `2> file` (the `2>$null` spelling does not even fail — see above) |
+| `nu::parser::error` | 70 | `%{ … }`, `{ a = 1 }`, and other parse oddities |
 | `nu::shell::column_not_found` | 53 | `$env.LAST_EXIT_CODE`, `$env.HOME` |
+| `nu::shell::error` | 44 | a `glob` / `ls <glob>` that matched nothing |
+| `nu::shell::incompatible_path_access` | 34 | path commands over a non-path |
 | `nu::shell::only_supports_this_input_type` | 35 | `$env \| where name =~ …` (`$env` is a record) |
 | `nu::parser::deprecated` | 29 | `str downcase`, `get -i`, `select -First` |
 | `nu::shell::eval_block_with_input` | 28 | wrong input inside an `each` / `where` closure |
 | `nu::parser::extra_positional` | 20 | `glob "**/*.java" "D:/dir"`, `each { … } [list]` |
+| `nu::shell::name_not_found` | 17 | `select name, type` (a comma is not a column separator) |
 
-Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code → hint table (hint). The refusal cases in `test/dialect.test.mjs` are **real failing commands from that table**, and the hint cases are **real stderr samples** — a regression suite against observed failures rather than imagined ones.
+Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code → hint table (hint), backed by three sources that check each other:
+
+- `test/corpus.mjs` — the refused and the allowed commands, **each one run on the local `nu`**;
+- `test/fixtures/nu-errors/` — a captured stderr per failure class (regenerate with `node dev/capture-nu-errors.mjs`), and `test/fixtures.test.mjs` fails if any captured class produces no hint;
+- `test/nu-accepts.test.mjs` — the reverse check: a refused command must really fail in `nu`, and an allowed one must really run (skipped when `nu` is not on PATH).
+
+That check is what removed two real false positives: `;# 2>&1` (a trailing comment, parsed as a redirect) and the deprecated-but-working `str downcase` / `get -i`.
 
 ## Install
 
@@ -65,7 +76,7 @@ dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only#<sha>
 dsh plugin --profile web add file:/path/to/dsh-nushell-only
 ```
 
-Restart the profile afterwards. The npm package name `dsh-nushell-only` is published (`0.3.0` for dsh `0.1.7-rc.1`), and the GitHub and local-checkout forms work as well. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
+Restart the profile afterwards. The package name is `dsh-nushell-only`; the npm registry copy is `0.2.0` and lags this repository (`0.4.0`, for dsh `0.1.7-rc.1`), so use the GitHub or local-checkout form below to get the current code. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
 
 > **Remove an older `dsh-nushell` first.** Exactly one provider may register `ctx.shell`; a leftover shell bundle makes boot fail on a duplicate service:
 >
@@ -112,7 +123,7 @@ Channel budgets, the guard, and the teaching layer are all composition config:
 | `nuArgs` | `['--no-config-file','-c']` | Argv prefix; the command is appended last |
 | `enforceNushellOnly` | `true` | The foreign-shell guard |
 | `foreignShellAllowlist` | `[]` | Whole-command regex strings exempt from the guard *and* the dialect lint |
-| `dialectLint` | `true` | Refuse bash/PowerShell habits before spawning (`2>&1`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`), naming the Nushell form |
+| `dialectLint` | `true` | Refuse bash/PowerShell habits before spawning (`2>&1`, `2>$null`, `$env:VAR`, `$x = 1`, `foreach`, `@(…)`, `Get-Content`, `glob a b`, `mkdir -p`, `select name, type`, `first -3`, `%{ … }`, …), naming the fragment, the command, and the Nushell form |
 | `dialectHints` | `true` | Append one `Nushell hint (…)` line to a failed call's stderr, chosen by the Nushell error (including the silent non-zero-exit abort) |
 | `requireNu` | `true` | Fail boot when `nu` cannot be resolved |
 | `verifyNu` / `verifyTimeoutMs` | `true` / `10000` | Probe `nu --version` once at boot |
@@ -133,7 +144,8 @@ Sandboxing is unchanged: `danger-full-access` runs directly, confined modes stil
 ## Development
 
 ```sh
-node --test test/                 # 50 unit tests (guard, dialect preflight/hints, guide, teaching, executor argv/sandbox paths)
+node --test test/                 # 58 unit tests (guard, dialect preflight/hints, hint fixtures, guide, teaching, executor argv/sandbox paths)
+node dev/capture-nu-errors.mjs    # re-capture real stderr per failure class into test/fixtures/nu-errors/
 node test/integration.mjs         # end to end: scratch DSH_HOME, profile install, real boot, per-check assertions
 node test/integration.mjs --mode workspace-write
 ```

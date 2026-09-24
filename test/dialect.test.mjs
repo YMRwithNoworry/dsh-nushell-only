@@ -2,11 +2,17 @@
  * The dialect layer is only worth shipping if it refuses exactly the habits
  * that fail in a Nu-only deployment and nothing else.
  *
- * The refusal cases and the stderr samples below are copied from real dsh
- * session transcripts (`nu::parser::shell_outerr` for `2>&1`,
- * `nu::shell::external_command` for `grep`, `nu::shell::column_not_found` for
- * `$env.LAST_EXIT_CODE`, and so on), so this suite is a regression test against
- * the observed failure modes rather than against invented ones.
+ * Three sources of truth, in this order:
+ *
+ * 1. Real dsh session transcripts (`nu::parser::shell_outerr` for `2>&1`,
+ *    `nu::shell::external_command` for `grep`, `nu::shell::column_not_found` for
+ *    `$env.LAST_EXIT_CODE`, and so on).
+ * 2. Probes of the installed Nushell (0.115.1): every refusal case below was
+ *    run through `nu --no-config-file -c` and does fail — and every case in
+ *    {@link ALLOWED} was run and does succeed, which is what makes those
+ *    entries false-positive regressions rather than opinions.
+ * 3. Captured stderr in `test/fixtures/nu-errors/`, so the hint regexes are
+ *    checked against real Nushell output instead of remembered output.
  */
 
 import assert from 'node:assert/strict'
@@ -15,70 +21,14 @@ import {
   assertNushellDialect,
   codeView,
   dialectHint,
+  dialectMessage,
   DIALECT_HINT_IDS,
   DIALECT_RULE_IDS,
   findDialectIssue,
   findForeignToolName,
 } from '../lib/dialect.js'
+import { ALLOWED, REFUSALS } from './corpus.mjs'
 
-/** Real failures, with the rule that must catch each one. */
-const REFUSALS = [
-  ["ls 'D:/code/dsh' 2>&1 | select name type size", 'stderr-redirect'],
-  ['node --test test/ 2>&1 | tail -60', 'stderr-redirect'],
-  ['ls C:/Users/me/.dsh -a -e 2>$null | table', 'stderr-redirect'],
-  ["$env:REF='D:/src'; node ref-search.cjs $env:REF hurt", 'powershell-env'],
-  ['$candidates = ["C:/a.exe" "C:/b.exe"]; $candidates | length', 'bare-assignment'],
-  ['$p="D:/x/File.java"; open --raw $p | lines | length', 'bare-assignment'],
-  ['@("block/A.java","block/B.java") | length', 'array-literal'],
-  ['foreach f in (ls lib/*.js | get name) { node --check $f }', 'foreach-keyword'],
-  ['cd D:/code; npm run build && node dist/index.js', 'and-or-operators'],
-  ['open --raw a.json || print "missing"', 'and-or-operators'],
-  ['export PATH=/usr/bin', 'export-assignment'],
-  ['node run.cjs; print $?', 'exit-status-sigil'],
-  ['ls | where-object { $_.size -gt 1kb }', 'powershell-cmdlet'],
-  ['ls | each { $_.name }', 'powershell-current-item'],
-  ['if (-not (Test-Path D:/x)) { print "no" }', 'powershell-not-operator'],
-  ['ls | select -First 20', 'deprecated-flags'],
-  ['ls | get -i name', 'deprecated-flags'],
-  ["'ABC' | str downcase", 'deprecated-flags'],
-  ['mkdir -p D:/tmp/probe/x', 'mkdir-parents'],
-  ['ls -R dsh-nushell-only', 'recursive-ls'],
-  ['$(ls D:/code)', 'cmd-substitution'],
-  ['Get-ChildItem -Path C:/x -Recurse -Depth 2', 'powershell-cmdlet'],
-  ["Get-Content 'C:/Users/me/.npmrc' | Select-String authToken", 'powershell-cmdlet'],
-  ['Test-Path C:/Users/me/.dsh', 'powershell-cmdlet'],
-  ['Join-Path $root "src/main/java"', 'powershell-cmdlet'],
-  ['glob "**/ValueInput*.java" "D:/code/MC"', 'glob-extra-positional'],
-  ['glob pattern="**/*.java" path="D:/code"', 'glob-named-arguments'],
-  ["ls '~/.dsh/profiles?'", 'path-optional-suffix'],
-  ['TOKEN=abc node publish.cjs', 'prefix-assignment'],
-]
-
-/** Nushell that must never be refused. */
-const ALLOWED = [
-  'ls | where type == file | get name',
-  'let x = 1; $x + 1',
-  'mut count = 0; $count = $count + 1',
-  '$env.DSH_DEMO = "1"; $env.DSH_DEMO',
-  '$env.DSH_HOME? | describe',
-  'do { ^git status --short } | complete | get exit_code',
-  "open --raw notes.txt | lines | where { |l| $l =~ 'hello' } | length",
-  'glob "D:/code/**/*.rs" | length',
-  '[1 2 3] | each { |n| $n * 2 }',
-  "if not ('D:/x' | path exists) { print 'no' }",
-  "print 'a && b 2>&1 $env:FOO @(x) foreach $(y) not-a-flag'",
-  'print "quoted 2>&1 and $env:HOME and @(1)"',
-  "open --raw 'file with # hash and ? mark.txt'",
-  "ls # 2>&1 in a comment is not a redirect",
-  "^Get-ChildItem -Path C:/x",
-  "^nu -c 'print \"2>&1\"'",
-  "r#'raw 2>&1 $env:X'# | str length",
-  'ls | where size > 1kb | sort-by size | reverse | first 5 | select name size',
-  "['a' 'b'] | path join",
-  'let p = (glob D:/code/*.md | get 0); if ($p | path exists) { open --raw $p | lines | last 3 }',
-  '$env.PATH = "x"; $env.PATH',
-  '$in | describe',
-]
 
 test('refuses the dialect habits observed in real sessions', () => {
   for (const [command, expected] of REFUSALS) {
@@ -104,6 +54,28 @@ test('the refusal names the habit, the Nushell spelling, and the escape hatch', 
     assert.match(error.message, /nu --no-config-file -c/)
     return true
   })
+})
+
+test('the refusal quotes the command and states the real failure mode', () => {
+  // The old message claimed every refused habit "fails at parse time". It does
+  // not: `2>$null` is lexed as an ordinary word and the command runs anyway.
+  assert.throws(() => assertNushellDialect('npm view x 2>$null | from json'), (error) => {
+    assert.match(error.message, /Offending fragment: "2>\$null"/)
+    assert.match(error.message, /Command: "npm view x 2>\$null \| from json"/)
+    assert.match(error.message, /lexed as an ordinary word/)
+    assert.match(error.message, /e> nul/)
+    assert.doesNotMatch(error.message, /fails at parse time/)
+    return true
+  })
+  assert.throws(() => assertNushellDialect('ls D:/x 2>&1'), (error) => {
+    assert.match(error.message, /nu::parser::shell_outerr/)
+    return true
+  })
+  // Without the command the message still stands on the fragment alone.
+  const message = dialectMessage(findDialectIssue('mkdir -p a/b'))
+  assert.match(message, /Offending fragment: "mkdir -p"/)
+  assert.match(message, /mkdir a\/b\/c/)
+  assert.doesNotMatch(message, /Command:/)
 })
 
 test('an allowlist entry exempts a whole call site', () => {
@@ -134,43 +106,83 @@ test('codeView blanks strings, raw strings, and comments without moving offsets'
 /** Real stderr samples, trimmed to the parts the hint chooser looks at. */
 const STDERR = {
   outerr: "Error: nu::parser::shell_outerr\n\n  x The '2>&1' shell operation is 'out+err>' in Nushell.\n\n[exit code: 1]",
+  shellErr: "Error: nu::parser::shell_err\n\n  x The '2>' shell operation is 'err>' in Nushell.\n",
   external: "Error: nu::shell::external_command\n\n  x External command failed\n   ,-[source:1:1]\n 1 | grep -n x f.txt\n   `----\n  help: `grep` is neither a Nushell built-in or a known external command",
   notFound: "Error: nu::shell::io::not_found\n\n  x Directory not found\n  help: 'D:\\code\\dsh插件\\profiles' does not exist",
   fileNotFound: "Error: nu::shell::io::file_not_found\n\n  x File not found\n  help: 'C:\\Users\\me\\.npmrc' does not exist",
   column: "Error: nu::shell::column_not_found\n\n  x Cannot find column 'LAST_EXIT_CODE'\n  help: If some rows have this column, try using 'LAST_EXIT_CODE?' for",
+  nameNotFound: "Error: nu::shell::name_not_found\n\n  x Name not found\n   ,-[source:1:13]\n 1 | ls | select name, type\n   :             ^^|^^\n   :               `-- did you mean 'name'?",
   variable: 'Error: nu::parser::variable_not_found\n\n  x Variable not found.\n',
   unknownFlag: 'Error: nu::parser::unknown_flag\n\n  x Command `ls` does not have flag `-R`.\n  help: Use `--help` to see available flags',
   deprecated: 'Error: nu::parser::deprecated\n\n  x Use `str lowercase` instead.\n',
   inputType: 'Error: nu::parser::input_type_mismatch\n\n  x Command does not support string input.\n',
   onlySupports: 'Error: nu::shell::only_supports_this_input_type\n\n  x Input type not supported.\n',
   extraPositional: 'Error: nu::parser::extra_positional\n\n  x Extra positional argument.\n  help: Usage: glob {flags} <glob>',
+  pipelineEmpty: 'Error: nu::shell::pipeline_mismatch\n\n  x Pipeline empty.\n   ,-[source:1:1]\n 1 | str trim\n   : ^^^^|^^^\n   :     `-- no input value was piped in',
   globPattern: 'Error: nu::shell::error\n\n  x error with glob pattern\n',
   expand: 'Error: nu::shell::error\n\n  x No matches found for Expand("C:/Users/me/.dsh/sessions/**/*.jsonl")\n',
+  doNotExpand: 'Error: nu::shell::error\n\n  x No matches found for DoNotExpand("D:/definitely-missing/**/*.md")\n   :                   `-- Pattern, file or folder not found',
   andand: 'Error: nu::parser::shell_andand\n\n  x The \'&&\' shell operation is \'and\' in Nushell.\n',
   immutable: 'Error: nu::parser::assignment_requires_mutable_variable\n\n  x Variable `count` is immutable.\n',
   evalBlock: 'Error: nu::shell::eval_block_with_input\n\n  x Eval block failed with pipeline input\n',
   parseMismatch: 'Error: nu::parser::parse_mismatch\n\n  x Parse mismatch: expected operator.\n',
+  redirectionTarget: 'Error: nu::parser::parse_mismatch\n\n  x Parse mismatch: expected redirection target.\n   ,-[source:1:9]\n 1 | print 1 out+err>\n   :             `-- expected redirection target',
+  unexpectedRedirection: 'Error: nu::parser::unexpected_redirection\n\n  x Unexpected redirection.\n   ,-[source:1:11]\n   :               `-- redirecting nothing',
+  percentSigil: 'Error: nu::parser::error\n\n  x percent sigil requires a built-in command\n   :               `-- unknown built-in command\n  help: remove `%` to use normal resolution, or use `^` to run an external',
+  incompatiblePathAccess: "Error: nu::shell::incompatible_path_access\n\n  x Data cannot be accessed with a cell path\n   ,-[source:1:26]\n 1 | 'abc' | str contains 'a' or 'b'",
+  operatorUnsupported: "Error: nu::parser::operator_unsupported_type\n\n  x The '+' operator does not work on values of type 'list<int>'.\n",
+  operatorIncompatible: "Error: nu::parser::operator_incompatible_types\n\n  x Types 'string' and 'int' are not compatible for the '+' operator.\n",
+  needsPositive: 'Error: nu::shell::needs_positive_value\n\n  x Negative value passed when positive one is required\n   :             `-- use a positive value',
+  unknownCommand: 'Error: nu::parser::unknown_command\n\n  x Unknown command.\n   ,-[source:1:14]\n 1 | let files = @(1, 2)\n   :                 `-- unknown command',
+  recordColon: 'Error: nu::parser::assignment_requires_variable\n\n  x Assignment operations require a variable.\n   :           `-- needs to be a variable',
+  keywordMissingArg: 'Error: nu::parser::keyword_missing_arg\n\n  x Missing argument to `in`.\n 1 | for f in [1 2]; do print $f',
+  cannotPassList: 'Error: nu::shell::cannot_pass_list_to_external\n\n  x Lists are not automatically spread when calling external commands\n   :            `-- Spread operator (...) is necessary to spread lists',
+  isADirectory: 'Error: nu::shell::io::is_a_directory\n\n  x I/O error\n   :             `-- Is a directory',
+  permissionDenied: 'Error: nu::shell::io::permission_denied\n\n  x I/O error\n   :             `-- Access is denied. (os error 5)',
+  httpError: 'Error: nu::shell::http_error\n\n  x HTTP error\n   :             `-- 404 Not Found',
+  unexpectedEof: 'Error: nu::shell::io::unexpected_eof\n\n  x I/O error\n   :     `-- Unexpected end of file',
 }
 
 test('a failed call carries one hint naming the fix', () => {
   const cases = [
     ['ls | select name 2>&1', STDERR.outerr, /o\+e>/],
+    ['ls | select name 2> out.txt', STDERR.shellErr, /o\+e>/],
     ["grep -n 'dsh' file.js", STDERR.external, /`grep` is not available here/],
     ['ls D:/code/dsh/profiles', STDERR.notFound, /path exists/],
     ["open --raw 'C:/Users/me/.npmrc'", STDERR.fileNotFound, /path exists/],
     ['print $env.LAST_EXIT_CODE', STDERR.column, /LAST_EXIT_CODE/],
+    ['ls | select name, type', STDERR.nameNotFound, /`select name type`/],
     ['$x = 1', STDERR.variable, /let x = …/],
     ['ls -R dsh-nushell-only', STDERR.unknownFlag, /ls -a` → `ls --all`/],
     ["'ABC' | str downcase", STDERR.deprecated, /str lowercase/],
     ["'abcdef' | first 3", STDERR.inputType, /str substring 0\.\.200/],
     ["$env | where name =~ 'DSH'", STDERR.onlySupports, /transpose key value/],
     ['glob a b', STDERR.extraPositional, /fold the directory in/],
+    ['str trim', STDERR.pipelineEmpty, /consumes its pipeline input/],
+    ['where name like "*.md"', STDERR.pipelineEmpty, /no input/],
     ['ls D:/dir/*.md', STDERR.globPattern, /`glob <pattern>`/],
     ['ls C:/x/**/*.jsonl', STDERR.expand, /empty list/],
+    ['ls D:/x/**/*.md', STDERR.doNotExpand, /empty list/],
     ['cd D:/x; make && node .', STDERR.andand, /separate statements with `;`/],
     ['let count = 0; $count = 1', STDERR.immutable, /mut x = …|mut count/],
     ['[1 2] | each { $x = 1 }', STDERR.evalBlock, /name the parameter/],
     ["print 'unbalanced", STDERR.parseMismatch, /single quotes/],
+    ['print 1 out+err>', STDERR.redirectionTarget, /needs a target|redirects nothing/],
+    ['node x.cjs | out+err> | str trim', STDERR.unexpectedRedirection, /redirects nothing|needs a target/],
+    ['print 1 | %{ $in }', STDERR.percentSigil, /`\| each \{ \|item\| … \}`/],
+    ['print 1 | %', STDERR.percentSigil, /ForEach-Object/],
+    ["'abc' | str contains 'a' or 'b'", STDERR.incompatiblePathAccess, /one pipeline/],
+    ['print (1 + [1 2])', STDERR.operatorUnsupported, /does not coerce/],
+    ["print ('a' + 1)", STDERR.operatorIncompatible, /does not coerce/],
+    ['ls | first -3', STDERR.needsPositive, /first 3/],
+    ['let files = @(1, 2)', STDERR.unknownCommand, /PowerShell array/],
+    ['let r = { a = 1 }', STDERR.recordColon, /colon/],
+    ['for f in [1 2]; do print $f', STDERR.keywordMissingArg, /takes a block/],
+    ['^git add [a b]', STDERR.cannotPassList, /spread operator/],
+    ['open --raw D:/', STDERR.isADirectory, /directory/],
+    ['rm -f D:/locked/x.txt', STDERR.permissionDenied, /sandbox/],
+    ["http get 'https://x/404'", STDERR.httpError, /http get --full/],
+    ["http get 'https://offline.invalid/x'", STDERR.unexpectedEof, /http get --full/],
   ]
   for (const [command, stderr, expected] of cases) {
     const hint = dialectHint(command, stderr)

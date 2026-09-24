@@ -1,0 +1,8 @@
+Error: nu::shell::pipeline_mismatch
+
+  x Pipeline empty.
+   ,-[source:1:1]
+ 1 | str trim
+   : ^^^^|^^^
+   :     `-- no input value was piped in
+   `----

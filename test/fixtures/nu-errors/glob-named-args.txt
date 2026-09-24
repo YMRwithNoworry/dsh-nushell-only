@@ -1,0 +1,8 @@
+Error: nu::shell::error
+
+  x error with glob pattern
+   ,-[source:1:6]
+ 1 | glob pattern="**/*.rs"
+   :      ^^^^^^^^|^^^^^^^^
+   :              `-- failed to parse glob expression
+   `----

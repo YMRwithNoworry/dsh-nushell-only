@@ -1,0 +1,8 @@
+Error: nu::parser::unknown_command
+
+  x Unknown command.
+   ,-[source:1:14]
+ 1 | let files = @(1, 2)
+   :              ^^^|^^
+   :                 `-- unknown command
+   `----

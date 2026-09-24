@@ -1,0 +1,10 @@
+Error: nu::shell::cannot_pass_list_to_external
+
+  x Lists are not automatically spread when calling external commands
+   ,-[source:1:10]
+ 1 | ^git add [a b]
+   :          ^^|^^
+   :            `-- Spread operator (...) is necessary to spread lists
+   `----
+  help: Either convert the list to a string or use the spread operator, like
+        so: ...[a b]

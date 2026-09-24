@@ -1,0 +1,9 @@
+Error: nu::shell::io::not_found
+
+  x Not found
+   ,-[source:1:4]
+ 1 | ls 'D:/definitely-missing-dir'
+   :    ^^^^^^^^^^^^^|^^^^^^^^^^^^^
+   :                 `-- Not found
+   `----
+  help: 'D:\definitely-missing-dir' does not exist

@@ -1,0 +1,10 @@
+Error: nu::parser::parse_mismatch
+
+  x Parse mismatch: expected redirection target.
+   ,-[source:1:9]
+ 1 | print 1 out+err>
+   :         ^^^^|^^^
+   :             `-- expected redirection target
+   `----
+  help: Check the syntax around this position — a typo, missing delimiter, or
+        wrong separator is common.

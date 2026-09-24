@@ -1,0 +1,9 @@
+Error: nu::parser::unknown_flag
+
+  x The `ls` command doesn't have flag `-R`.
+   ,-[source:1:5]
+ 1 | ls -R src
+   :     |
+   :     `-- unknown flag
+   `----
+  help: Use `--help` to see available flags

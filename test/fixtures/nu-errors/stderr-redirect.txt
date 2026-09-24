@@ -1,0 +1,9 @@
+Error: nu::parser::shell_outerr
+
+  x The '2>&1' shell operation is 'out+err>' in Nushell.
+   ,-[source:1:28]
+ 1 | ls 'D:/definitely-missing' 2>&1 | select name
+   :                            ^^|^
+   :                              `-- use 'out+err>' instead of '2>&1' in Nushell
+   `----
+  help: Nushell redirection will write all of stdout before stderr.

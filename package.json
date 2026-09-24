@@ -1,7 +1,7 @@
 {
   "name": "dsh-nushell-only",
-  "version": "0.3.0",
-  "description": "Nushell-only shell executor, dialect preflight, and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.7-rc.1): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, bash/PowerShell habits are refused before they spawn, a failed call carries an actionable Nushell hint, and the model is taught Nushell.",
+  "version": "0.4.0",
+  "description": "Nushell-only shell executor, dialect preflight, and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.7-rc.1): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, bash/PowerShell habits are refused before they spawn (including the ones Nushell silently misreads, like `2>$null`), a failed call carries an actionable Nushell hint verified against captured real Nushell stderr, and the model is taught Nushell.",
   "license": "MIT",
   "author": "dsh-nushell-only contributors",
   "type": "module",
@@ -61,6 +61,7 @@
     "test": "node --test test/",
     "test:integration": "node test/integration.mjs",
     "test:integration:confined": "node test/integration.mjs --mode workspace-write",
+    "fixtures": "node dev/capture-nu-errors.mjs",
     "link-peers": "node dev/link-peers.mjs"
   },
   "peerDependencies": {

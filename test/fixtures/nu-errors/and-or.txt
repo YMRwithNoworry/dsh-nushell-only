@@ -1,0 +1,10 @@
+Error: nu::parser::shell_andand
+
+  x The '&&' operator is not supported in Nushell
+   ,-[source:1:9]
+ 1 | print 1 && print 2
+   :         ^|
+   :          `-- instead of '&&', use ';' or 'and'
+   `----
+  help: use ';' instead of the shell '&&', or 'and' instead of the boolean
+        '&&'

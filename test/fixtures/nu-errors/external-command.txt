@@ -1,0 +1,9 @@
+Error: nu::shell::external_command
+
+  x External command failed
+   ,-[source:1:1]
+ 1 | grep -n x file.txt
+   : ^^|^
+   :   `-- Command `grep` not found
+   `----
+  help: Did you mean `find`?

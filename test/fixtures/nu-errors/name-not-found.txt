@@ -1,0 +1,8 @@
+Error: nu::shell::name_not_found
+
+  x Name not found
+   ,-[source:1:13]
+ 1 | ls | select name, type
+   :             ^^|^^
+   :               `-- did you mean 'name'?
+   `----

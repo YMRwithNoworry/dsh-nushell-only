@@ -1,0 +1,8 @@
+Error: nu::parser::input_type_mismatch
+
+  x Command does not support string input.
+   ,-[source:1:9]
+ 1 | 'abc' | first 3
+   :         ^^|^^
+   :           `-- command doesn't support string input
+   `----

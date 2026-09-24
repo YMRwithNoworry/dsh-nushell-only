@@ -1,0 +1,18 @@
+Error: nu::shell::eval_block_with_input
+
+  x Eval block failed with pipeline input
+   ,-[source:1:1]
+ 1 | ls | each { |f| open --raw $f.name }
+   : ^|
+   :  `-- source value
+   `----
+
+Error: nu::shell::io::is_a_directory
+
+  x I/O error
+   ,-[source:1:28]
+ 1 | ls | each { |f| open --raw $f.name }
+   :                            ^^^|^^^
+   :                               `-- Is a directory
+   `----
+  help: The error occurred at 'D:\code\dsh插件\dsh-nushell-only\dev'

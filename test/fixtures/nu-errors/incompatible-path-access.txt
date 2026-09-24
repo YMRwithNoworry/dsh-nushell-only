@@ -1,0 +1,8 @@
+Error: nu::shell::incompatible_path_access
+
+  x Data cannot be accessed with a cell path
+   ,-[source:1:26]
+ 1 | 'abc' | str contains 'a' or 'b'
+   :                          ^|
+   :                           `-- string doesn't support cell paths
+   `----

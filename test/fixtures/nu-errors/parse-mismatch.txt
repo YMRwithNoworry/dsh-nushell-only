@@ -1,0 +1,11 @@
+Error: nu::parser::unclosed_delimiter
+
+  x Unclosed delimiter.
+   ,-[source:1:8]
+ 1 | print (1
+   :       ||
+   :       |`-- expected `)` here
+   :       `-- unclosed — opens here (need `)`)
+   `----
+  help: Add a matching `)` to close this delimiter, or check that an earlier
+        closer closed the wrong block.

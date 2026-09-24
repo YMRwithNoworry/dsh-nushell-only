@@ -1,0 +1,8 @@
+Error: nu::parser::unexpected_redirection
+
+  x Unexpected redirection.
+   ,-[source:1:11]
+ 1 | print 1 | out+err> | str trim
+   :           ^^^^|^^^
+   :               `-- redirecting nothing
+   `----

@@ -127,6 +127,15 @@ export const ALLOWED = [
   "print '50%{ done'",
   "print '-ErrorAction is PowerShell'",
   'do { ^git add -- file.txt } | complete',
+  // A quoted first word is a string value, not a program: Nushell rejects a
+  // quoted command name outright, so these are pipelines over text. All four
+  // were refused before (as a bash `VAR=value` prefix or a PowerShell cmdlet).
+  '"a=1" | str length',
+  "'x=1' | str length",
+  '"name=1" | parse "name={value}" | get 0.value',
+  '"Get-Content" | str length',
+  '"bash" | str length',
+  '"grep" | str length',
   // Deprecated *by warning only* on 0.115.1: these run, so they must not be
   // refused — the `deprecated-flag` hint below the output names the replacement.
   // (Their strict replacements `select -First` / `-Last` / `-Unique` do fail.)

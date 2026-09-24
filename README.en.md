@@ -58,7 +58,7 @@ Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code
 - `test/fixtures/nu-errors/` — a captured stderr per failure class (regenerate with `node dev/capture-nu-errors.mjs`), and `test/fixtures.test.mjs` fails if any captured class produces no hint;
 - `test/nu-accepts.test.mjs` — the reverse check: a refused command must really fail in `nu`, and an allowed one must really run (skipped when `nu` is not on PATH).
 
-That check is what removed two real false positives: `;# 2>&1` (a trailing comment, parsed as a redirect) and the deprecated-but-working `str downcase` / `get -i`.
+That check is what removed three real false positives: `;# 2>&1` (a trailing comment, parsed as a redirect), the deprecated-but-working `str downcase` / `get -i`, and a **quoted string in command position** (`"a=1" | str length`, `"Get-Content" | str length`), which the tokenizer read as a bash `VAR=value` prefix or a PowerShell cmdlet — Nushell itself refuses a quoted command name (`'bash' -c 'echo hi'` is `nu::parser::parse_mismatch`), so a quoted first word is always data.
 
 ## Install
 

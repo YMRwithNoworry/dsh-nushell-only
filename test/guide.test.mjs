@@ -15,6 +15,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { GUIDE_FENCE, buildGuide, buildShellRules, buildToolDescription } from '../lib/guide.js'
+import { findDialectIssue } from '../lib/dialect.js'
+import { findForeignShellHandoff } from '../lib/guard.js'
 
 /** Every fenced block of the given language, in order. */
 function extractBlocks(markdown, fence) {
@@ -78,6 +80,33 @@ test('every guide example runs on the installed Nushell', { skip: !nuAvailable }
   } finally {
     rmSync(workspace, { recursive: true, force: true })
   }
+})
+
+test('the guide never teaches a command the preflight would refuse', () => {
+  // Teaching and enforcement disagreeing is the worst kind of bug here: the
+  // model is told to write something the plugin then blocks. Every fenced `nu`
+  // block — the examples the model is told to copy — must survive the preflight.
+  // Inline spans are not checked: the translation tables deliberately quote the
+  // bash and PowerShell forms they are translating away from.
+  const refused = []
+  for (const variant of ['full', 'compact']) {
+    for (const block of extractBlocks(buildGuide({ variant }), GUIDE_FENCE)) {
+      const issue = findDialectIssue(block)
+      if (issue !== undefined) refused.push(`${variant} ${issue.id}: ${JSON.stringify(block)}`)
+    }
+  }
+  assert.deepEqual(refused, [], `the guide teaches commands the preflight refuses:\n${refused.join('\n')}`)
+})
+
+test('the guide never teaches a command the guard would refuse', () => {
+  const refused = []
+  for (const variant of ['full', 'compact']) {
+    for (const block of extractBlocks(buildGuide({ variant }), GUIDE_FENCE)) {
+      const handoff = findForeignShellHandoff(block)
+      if (handoff !== undefined) refused.push(`${variant} ${handoff.shell}: ${JSON.stringify(block)}`)
+    }
+  }
+  assert.deepEqual(refused, [], `the guide teaches commands the guard refuses:\n${refused.join('\n')}`)
 })
 
 test('the rules section states the freshness, refusal, and data-model contracts', () => {

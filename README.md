@@ -61,7 +61,7 @@
 - `test/fixtures/nu-errors/`：每个失败类一份**真实 stderr 抓取**（`node dev/capture-nu-errors.mjs` 可重新生成），`test/fixtures.test.mjs` 断言每个被抓到的失败类**都必须产出提示**；
 - `test/nu-accepts.test.mjs`：反向对照——被拒的命令必须真的在 `nu` 里失败，被放行的命令必须真的能跑（`nu` 不在 PATH 时整体跳过）。
 
-上一版还因此修掉两个真实误判：`;# 2>&1` 这类注释被当成重定向，以及能跑通的 `str downcase` / `get -i` 被当成硬错误拦下。
+上一版还因此修掉三类真实误判：`;# 2>&1` 这类注释被当成重定向；能跑通的 `str downcase` / `get -i` 被当成硬错误拦下；以及**命令位置上被引号包起来的字符串**（`"a=1" | str length`、`"Get-Content" | str length`）被当成 bash 的 `VAR=value` 前缀或 PowerShell cmdlet——Nushell 本身不接受"带引号的命令名"（`'bash' -c 'echo hi'` 是 `parse_mismatch`），所以那种位置的引号内容一律是数据。
 
 ## 安装
 

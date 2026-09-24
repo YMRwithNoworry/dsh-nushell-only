@@ -18,7 +18,6 @@ const REFUSED = [
   ['bash -c "echo hi"', 'bash'],
   ['bash script.sh', 'bash'],
   ['/usr/bin/bash -lc "ls"', 'bash'],
-  ['"C:\\Program Files\\Git\\bin\\bash.exe" -lc "ls"', 'bash'],
   ['^bash -c "echo hi"', 'bash'],
   ['&bash -c "echo hi"', 'bash'],
   ['sh -c "echo hi"', 'sh'],
@@ -45,6 +44,14 @@ const REFUSED = [
 const ALLOWED = [
   'nu -c "echo hi"',
   'nu --no-config-file -c "ls"',
+  // A quoted command name is data, not a program: Nushell rejects
+  // `'bash' -c 'echo hi'` and `"C:\Program Files\Git\bin\bash.exe" -lc ls` with
+  // `nu::parser::parse_mismatch` ("expected operator"), so nothing is handed off
+  // — and `"bash" | str length` is a 4-character string. Verified on 0.115.1.
+  "'bash' -c 'echo hi'",
+  '"C:\\Program Files\\Git\\bin\\bash.exe" -lc "ls"',
+  '"bash" | str length',
+  "'pwsh' | str length",
   'git status',
   'git commit -m "use bash"',
   'ls | where type == file',

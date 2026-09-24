@@ -4,7 +4,9 @@
 
 把 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness)（dsh）的**唯一 shell 换成 Nushell**，并**教会模型写 Nushell 语法**的 Profile Bundle。
 
-适配版本：**dsh `0.1.5-rc.2`**（在 `0.1.5-rc.2` 与 `0.1.5-rc.1` CLI + `0.1.5-rc.2` 库上实测通过）。运行时要求 Node `>=22.19.0`、[Nushell](https://www.nushell.sh/)（实测 `0.115.1`，建议 `>=0.100`）。
+适配版本：**dsh `0.1.7-rc.1`**（在 `0.1.7-rc.1` CLI + 库上实测通过）。运行时要求 Node `>=22.19.0`、[Nushell](https://www.nushell.sh/)（实测 `0.115.1`，建议 `>=0.100`）。
+
+> **从 0.2.x 升级**：dsh `0.1.7-rc.1` 把 `ctx.shell` 接缝收敛成**一个**执行动词 `execute(spec)`（返回活句柄 + 前台投影 `result()`），旧的 `run` / `start` / `runArgv` / `startArgv` 已移除。本插件 `0.3.0` 即适配该接缝；`0.2.x` 只能配 `0.1.5-rc.2` 使用。
 
 ## 它做了什么
 
@@ -14,6 +16,7 @@
    `bash-sandbox` / `pwsh-sandbox` 两个第一方执行器被禁用，换成 `dsh-nushell-only/executor`：所有 shell 执行一律变成
    `nu --no-config-file -c "<command>"`。
    因为换的是**能力接缝**（capability seam）而不是模型工具，所以 dsh 里所有走 `ctx.shell` 的消费者都会用 Nushell：模型工具、后台任务（`run_in_background`）、hook 桥（`dsh-hooks-*`）、`tmux-context`、以及任何进程内插件调用。超时、输出上限、spill 文件、后台句柄、取消、沙箱策略与拒绝事实全部沿用第一方实现（继承 `SandboxBashExecutor` / `SandboxPwshExecutor`，只替换 argv）。
+   具体只覆盖三个接缝：`execute(spec)`（唯一入口；`danger-full-access` 分支在此重建，受限分支委托给基类）、`argv(spec)`（PowerShell 族的 argv 接缝）、`confine(subject, policy, signal)`（POSIX 族传命令字符串、Windows 族传 spec，两者都接受，并把 `signal` 原样转给 `ctx.sandbox`）。
    同时 `--no-config-file` 保证用户自己的 `config.nu` / `env.nu` 不会影响工具调用结果。
 
 2. **拒绝"换个 shell 跑"（强制层）**
@@ -65,7 +68,7 @@ dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only#<sha>
 dsh plugin --profile web add file:/path/to/dsh-nushell-only
 ```
 
-安装后**重启该 profile**。npm 包名 `dsh-nushell-only` 已发布（当前 `0.2.0`），GitHub 与本地 checkout 形式同样可用。`dsh plugin` 会把包登记进 `dsh.profile.bundles`（本包声明了 `dsh.bundle.patch`），补丁层会把上面两行插进组合树。
+安装后**重启该 profile**。npm 包名 `dsh-nushell-only` 已发布（本版本 `0.3.0`，适配 dsh `0.1.7-rc.1`），GitHub 与本地 checkout 形式同样可用。`dsh plugin` 会把包登记进 `dsh.profile.bundles`（本包声明了 `dsh.bundle.patch`），补丁层会把上面两行插进组合树。
 
 > **先卸掉旧的 `dsh-nushell`**：一个上下文只允许一个 `ctx.shell` 提供者。如果 profile 里已经有 `dsh-nushell`（或任何其他 shell 执行器 bundle），请先：
 >
@@ -158,14 +161,14 @@ dsh --profile web --dump-config | grep -n "nushell"
 ## 开发与验证
 
 ```sh
-node --test test/                 # 47 个单元测试（守卫 / 方言预检与提示 / 手册 / 教学层 / 执行器 argv 与沙箱路径）
-node test/integration.mjs         # 端到端：建临时 DSH_HOME、装 profile、真实启动、28 项断言
+node --test test/                 # 50 个单元测试（守卫 / 方言预检与提示 / 手册 / 教学层 / 执行器 argv 与沙箱路径）
+node test/integration.mjs         # 端到端：建临时 DSH_HOME、装 profile、真实启动、逐项断言
 node test/integration.mjs --mode workspace-write   # 受限沙箱模式下再跑一遍
 ```
 
-集成测试会依次验证：`ctx.shell` 就是 NushellExecutor、`nu --version`、Nu 内建管道、表管道、外部命令、非零退出以结果上报、外部 shell handoff 被拒、**方言预检拒绝 `2>&1` 与 `$x = 1` 并给出 Nu 写法**、**失败调用带回 `Nushell hint`**、系统提示含规则/手册/对照表/失败目录、`bash`/`pwsh` 描述与参数说明已改写、**preset 子 scope 里的 shell 工具同样被改写**、沙箱事实正确上报。可用 `DSH_INTEGRATION_CLI=/path/to/@deepseek-ai/dsh/lib/bin.js` 指定要驱动的 CLI。
+集成测试会依次验证：`ctx.shell` 就是 NushellExecutor、`nu --version`、**0.1.7 的 `execute`/`resolve` 接缝存在**、Nu 内建管道、表管道、外部命令、非零退出以结果上报、外部 shell handoff 被拒、**方言预检拒绝 `2>&1` 与 `$x = 1` 并给出 Nu 写法**、**失败调用带回 `Nushell hint`**、**后台句柄可以起来并被 kill、settle 为 `killed`**、系统提示含规则/手册/对照表/失败目录、`bash`/`pwsh` 描述与参数说明已改写、**preset 子 scope 里的 shell 工具同样被改写**、沙箱事实正确上报。它驱动的 CLI 依次取：`$DSH_INTEGRATION_CLI` → 仓库旁的 `.verify/node_modules/@deepseek-ai/dsh/lib/bin.js`（本地验证用的锁定副本，未纳入本仓库）→ PATH 上的全局 `dsh`。
 
-`node dev/link-peers.mjs` 把本机的 dsh 安装里的 `@deepseek-ai/*` 软链到 `node_modules/`，供 checkout 直接跑测试（正式安装由 pnpm + dsh 自身的模块回退负责）。
+`node dev/link-peers.mjs` 把本机的 dsh 安装里的 `@deepseek-ai/*` 软链到 `node_modules/`，供 checkout 直接跑测试（正式安装由 pnpm + dsh 自身的模块回退负责）。注意执行器的预算字段（`cwd`/`timeoutMs`/…）在 dsh 里是 schemastery 的 `volatile` 字段，**只有经过 schema 解析的 config 才可用**——单测因此用 `Schema.resolve(raw, NushellExecutor.Config)[0]` 构造配置，和生产加载路径一致。
 
 ## 排错
 
@@ -178,7 +181,7 @@ node test/integration.mjs --mode workspace-write   # 受限沙箱模式下再跑
 | 工具调用报"refusing a … command"，但命令其实是合法 Nu | 误判了：直接引用整条命令写进 `foreignShellAllowlist`；`lib/dialect.js` 的规则都带 id，便于定位 |
 | 调用返回 `[exit code: N]` 却没有任何输出 | 外部命令非零退出会中断整条命令且不打印原因；让模型按 hint 改用 `\| complete` / `do -i` / `try`，或直接看 `Nushell hint (silent-exit)` |
 | 中间语句的结果"看不到" | `nu -c` 只显示最后一条语句的值；要 `print` 或用 `to json` 输出 |
-| `workspace-write` 模式下集成测试的 "runs an external command" 失败 | 本机 0.1.5-rc.1 的 ACL 沙箱下 `^外部命令` 起不来（空输出）；用 `--mode danger-full-access` 验证功能。已确认与插件无关：HEAD 原版同样如此（20/21），本版本为 27/28（多出的断言全部通过） |
+| `workspace-write` 下"把外部命令管道进 Nu 内建"被 SKIP | 本机 Windows ACL restricted-token runner **拒绝被限制进程再 spawn 带管道的子进程**（`Could not spawn foreground child: 拒绝访问 (os error 5)`）。已实测与本插件无关：同一组合里把 `nushell-executor` 禁用、恢复第一方 `pwsh-sandbox`，`git --version \| Out-String` 同样报"程序'git.exe'运行失败：拒绝访问"。裸外部命令（`^git --version`）在受限模式下正常。集成测试遇到这种环境记为 SKIP 而不是 FAIL；`--mode danger-full-access` 下该项通过 |
 | 模型仍写 bash | 检查 `guide: full`、`rewriteToolDescriptions: true`；再看模型侧 `toolOrder`/preset 是否把 shell 工具换成了自建工具 |
 
 ## 许可

@@ -41,6 +41,19 @@ function skip(name, reason) {
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
+/**
+ * Run one command through the seam and settle its foreground projection. On the
+ * 0.1.7 line there is exactly one verb: `execute(spec)` resolves with the live
+ * handle, and `result()` is the foreground result.
+ * @param shell - the live `ctx.shell` service.
+ * @param command - Nushell source.
+ * @returns the settled {@link ShellRunResult}.
+ */
+async function shellRun(shell, command) {
+  const handle = await shell.execute(shell.resolve({ command }))
+  return handle.result()
+}
+
 /** The assembled tool schema for one name, from the live prompt registry. */
 function toolOf(assembly, name) {
   return assembly.tools.find((tool) => tool.name === name)
@@ -112,23 +125,40 @@ export async function apply(ctx) {
       skip('preset-scoped shell tool checks', 'the include was re-applied and disposed this fiber')
     }
 
-    const builtin = await shell.run(shell.resolve({ command: 'version | get version' }))
+    record('the shell service exposes the 0.1.7 execution seam', typeof shell.execute === 'function' && typeof shell.resolve === 'function')
+
+    const builtin = await shellRun(shell, 'version | get version')
     record('runs a Nushell builtin pipeline', builtin.exitCode === 0 && /^\d+\.\d+/.test(builtin.stdout.text.trim()), builtin.stdout.text)
 
-    const table = await shell.run(shell.resolve({ command: 'ls | where type == file | length' }))
+    const table = await shellRun(shell, 'ls | where type == file | length')
     record('runs a Nushell table pipeline', table.exitCode === 0 && /^\d+$/.test(table.stdout.text.trim()), table.stdout.text)
     const expectedMode = ctx.sandboxPolicy?.defaultMode
     record('the run reports its sandbox facts', expectedMode === undefined || table.sandbox?.mode === expectedMode, `expected ${expectedMode}, reported ${table.sandbox?.mode}`)
 
-    const external = await shell.run(shell.resolve({ command: '^git --version | str trim' }))
+    const external = await shellRun(shell, '^git --version')
     record('runs an external command through Nushell', external.exitCode === 0 && /git version/.test(external.stdout.text), external.stdout.text)
 
-    const failure = await shell.run(shell.resolve({ command: 'this-is-not-a-nu-command' }))
+    // An external whose output is PIPED into a Nushell builtin is a second child
+    // spawn (Nushell creates the pipe and runs the program itself). The Windows
+    // ACL restricted-token runner denies that spawn — measured against this
+    // plugin's executor AND against the stock first-party pwsh executor in the
+    // same composition, so it is the runner's limit, not this plugin's. Report
+    // that environment as a skip instead of blaming the plugin for it.
+    const piped = await shellRun(shell, '^git --version | str trim')
+    if (piped.exitCode === 0 && /git version/.test(piped.stdout.text)) {
+      record('pipes an external command into a Nushell builtin', true, piped.stdout.text)
+    } else if (/os error 5|permission_denied/i.test(piped.stderr.text)) {
+      skip('pipes an external command into a Nushell builtin', `this sandbox runner denies a confined piped child spawn (${piped.stderr.text.replace(/\s+/g, ' ').slice(0, 110)})`)
+    } else {
+      record('pipes an external command into a Nushell builtin', false, `exit ${piped.exitCode} :: ${piped.stderr.text.replace(/\s+/g, ' ').slice(0, 160)}`)
+    }
+
+    const failure = await shellRun(shell, 'this-is-not-a-nu-command')
     record('reports a non-zero exit instead of throwing', failure.exitCode !== 0, `exit ${failure.exitCode}`)
 
     let refused = ''
     try {
-      await shell.run(shell.resolve({ command: 'bash -c "echo hi"' }))
+      await shellRun(shell, 'bash -c "echo hi"')
     } catch (error) {
       refused = error instanceof Error ? error.message : String(error)
     }
@@ -139,7 +169,7 @@ export async function apply(ctx) {
     // the Nushell spelling.
     let dialectRefusal = ''
     try {
-      await shell.run(shell.resolve({ command: "ls 'D:/x' 2>&1 | select name" }))
+      await shellRun(shell, "ls 'D:/x' 2>&1 | select name")
     } catch (error) {
       dialectRefusal = error instanceof Error ? error.message : String(error)
     }
@@ -148,7 +178,7 @@ export async function apply(ctx) {
 
     let assignmentRefusal = ''
     try {
-      await shell.run(shell.resolve({ command: '$total = 1; print $total' }))
+      await shellRun(shell, '$total = 1; print $total')
     } catch (error) {
       assignmentRefusal = error instanceof Error ? error.message : String(error)
     }
@@ -156,9 +186,17 @@ export async function apply(ctx) {
 
     // Post-failure hinting: an error the preflight cannot predict still comes
     // back with one actionable line naming the fix.
-    const hinted = await shell.run(shell.resolve({ command: "ls 'D:/definitely-missing-dir-nushell-only-probe'" }))
+    const hinted = await shellRun(shell, "ls 'D:/definitely-missing-dir-nushell-only-probe'")
     record('a failed call carries a Nushell hint', /Nushell hint \(path-not-found\)/.test(hinted.stderr.text), hinted.stderr.text.replace(/\s+/g, ' ').slice(0, 160))
     record('the hint names a concrete fix', /path exists/.test(hinted.stderr.text))
+
+    // The background half of the seam: `execute` hands back the live process, and
+    // the caller owns when it stops (the jobs layer promotes on timeout).
+    const background = await shell.execute(shell.resolve({ command: 'sleep 60sec', onExpiry: 'none' }))
+    record('a background execution returns a live Nushell process', background.status === 'running', background.status)
+    record('a background Nushell process can be killed', background.kill() === true)
+    await background.done
+    record('a killed background process settles as killed', background.status === 'killed', background.status)
 
     let assembly
     for (let attempt = 0; attempt < 100; attempt++) {

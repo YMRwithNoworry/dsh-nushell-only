@@ -1,4 +1,4 @@
-# dsh-nushell-only — profile bundle patch (dsh 0.1.5-rc.2)
+# dsh-nushell-only — profile bundle patch (dsh 0.1.7-rc.1)
 #
 # 1. Disable the two first-party `ctx.shell` providers. Exactly one provider may
 #    register that service, so replacing both rows with the Nushell executor is
@@ -11,6 +11,11 @@
 # the executor underneath them runs Nushell. The teaching layer rewrites their
 # descriptions (and adds the syntax guide to the system prompt) so the model is
 # never told it is writing bash or PowerShell.
+#
+# On the 0.1.7 line the seam has ONE execution verb — `execute(spec)` returning a
+# live handle whose `result()` is the foreground projection — and the inserted
+# executor implements exactly that, so every consumer (foreground tool calls,
+# background jobs, hooks, tmux context, in-process callers) reaches Nushell.
 
 - id: bash-sandbox
   disabled: true

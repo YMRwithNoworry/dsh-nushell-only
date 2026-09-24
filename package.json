@@ -1,7 +1,7 @@
 {
   "name": "dsh-nushell-only",
-  "version": "0.2.0",
-  "description": "Nushell-only shell executor, dialect preflight, and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.5-rc.2): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, bash/PowerShell habits are refused before they spawn, a failed call carries an actionable Nushell hint, and the model is taught Nushell.",
+  "version": "0.3.0",
+  "description": "Nushell-only shell executor, dialect preflight, and Nushell syntax teaching for DeepSeek Harness (dsh 0.1.7-rc.1): every ctx.shell execution runs as `nu --no-config-file -c`, other shells are refused, bash/PowerShell habits are refused before they spawn, a failed call carries an actionable Nushell hint, and the model is taught Nushell.",
   "license": "MIT",
   "author": "dsh-nushell-only contributors",
   "type": "module",
@@ -65,13 +65,14 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-bash-sandbox": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-pwsh-sandbox": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-sandbox": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-sandbox-policy": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-shell": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-subprocess": "^0.1.5-rc.2",
-    "@deepseek-ai/dsh-system-prompt": "^0.1.5-rc.2"
+    "@deepseek-ai/dsh-bash-sandbox": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-pwsh-sandbox": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-sandbox": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-sandbox-policy": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-shell": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-subprocess": "^0.1.7-rc.1",
+    "@deepseek-ai/dsh-system-prompt": "^0.1.7-rc.1",
+    "@deepseek-ai/schemastery": "^3.18.4"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/cordis": {
@@ -96,6 +97,9 @@
       "optional": true
     },
     "@deepseek-ai/dsh-system-prompt": {
+      "optional": true
+    },
+    "@deepseek-ai/schemastery": {
       "optional": true
     }
   }

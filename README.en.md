@@ -4,7 +4,9 @@ English | [中文](README.md)
 
 A [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) (dsh) profile bundle that makes **Nushell the harness's only shell** and **teaches the model to write it**.
 
-Targets **dsh `0.1.5-rc.2`** (verified against `0.1.5-rc.2` and against a `0.1.5-rc.1` CLI with `0.1.5-rc.2` packages). Requires Node `>=22.19.0` and [Nushell](https://www.nushell.sh/) (verified with `0.115.1`; `>=0.100` recommended).
+Targets **dsh `0.1.7-rc.1`** (verified against `0.1.7-rc.1` CLI and packages). Requires Node `>=22.19.0` and [Nushell](https://www.nushell.sh/) (verified with `0.115.1`; `>=0.100` recommended).
+
+> **Upgrading from 0.2.x:** dsh `0.1.7-rc.1` collapsed the `ctx.shell` seam onto **one** execution verb, `execute(spec)` (a live handle plus the foreground projection `result()`); `run` / `start` / `runArgv` / `startArgv` are gone. `0.3.0` of this plugin implements that seam; `0.2.x` only fits `0.1.5-rc.2`.
 
 ## What it does
 
@@ -13,6 +15,7 @@ Three cooperating pieces:
 1. **Owns `ctx.shell` (execution).** The two first-party executors (`bash-sandbox`, `pwsh-sandbox`) are disabled and replaced by `dsh-nushell-only/executor`, so every shell command becomes
    `nu --no-config-file -c "<command>"`.
    Because the replacement is at the capability seam rather than at the model tool, *every* `ctx.shell` consumer runs Nushell: the model tools, background jobs, the hook bridges (`dsh-hooks-*`), `tmux-context`, and any in-process caller. Timeouts, output caps, spill files, background handles, cancellation, the sandbox wrap, and its denial/runner-failure facts all stay the first-party implementation (the executor extends `SandboxBashExecutor` / `SandboxPwshExecutor` and replaces only the argv).
+   Exactly three seams are overridden: `execute(spec)` (the single entry point — the `danger-full-access` branch is rebuilt there while the confined branch delegates to the base executor), `argv(spec)` (the PowerShell family's argv seam), and `confine(subject, policy, signal)` (the POSIX family passes the command string, the Windows family the resolved spec; both are accepted, and `signal` is forwarded to `ctx.sandbox` unchanged).
    `--no-config-file` keeps the user's `config.nu` / `env.nu` from changing what a tool call does.
 
 2. **Refuses "hand it to another shell" (enforcement).** A narrow guard rejects a command whose statement starts by delegating to another shell (`bash -c`, `sh -c`, `cmd /c`, `pwsh -Command`, `wsl …`, including `sudo`/`env`/`busybox` wrappers, `^bash`, and path forms) with an actionable error and a Nushell translation, instead of letting the model hit an opaque Nu parse error. On by default; `enforceNushellOnly: false` disables it, `foreignShellAllowlist` exempts individual call sites.
@@ -62,7 +65,7 @@ dsh plugin --profile web add github:YMRwithNoworry/dsh-nushell-only#<sha>
 dsh plugin --profile web add file:/path/to/dsh-nushell-only
 ```
 
-Restart the profile afterwards. The npm package name `dsh-nushell-only` is published (currently `0.2.0`), and the GitHub and local-checkout forms work as well. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
+Restart the profile afterwards. The npm package name `dsh-nushell-only` is published (`0.3.0` for dsh `0.1.7-rc.1`), and the GitHub and local-checkout forms work as well. `dsh plugin` records the package in `dsh.profile.bundles` (this package declares `dsh.bundle.patch`), and the bundle patch inserts both rows into the composed tree.
 
 > **Remove an older `dsh-nushell` first.** Exactly one provider may register `ctx.shell`; a leftover shell bundle makes boot fail on a duplicate service:
 >
@@ -130,16 +133,16 @@ Sandboxing is unchanged: `danger-full-access` runs directly, confined modes stil
 ## Development
 
 ```sh
-node --test test/                 # 47 unit tests (guard, dialect preflight/hints, guide, teaching, executor argv/sandbox paths)
-node test/integration.mjs         # end to end: scratch DSH_HOME, profile install, real boot, 28 assertions
+node --test test/                 # 50 unit tests (guard, dialect preflight/hints, guide, teaching, executor argv/sandbox paths)
+node test/integration.mjs         # end to end: scratch DSH_HOME, profile install, real boot, per-check assertions
 node test/integration.mjs --mode workspace-write
 ```
 
-The integration test asserts the executor identity, `nu --version`, Nu builtin/table/external runs, non-zero exit reporting, the foreign-shell refusal, **the dialect preflight refusing `2>&1` and `$x = 1` with the Nushell spelling**, **a failed call carrying a `Nushell hint`**, the prompt sections (rules, guide, translation table, failure catalogue), the rewritten descriptions (including inside a **preset-scoped** assembly), and the sandbox facts. Point it at any CLI with `DSH_INTEGRATION_CLI=/path/to/@deepseek-ai/dsh/lib/bin.js`.
+The integration test asserts the executor identity, `nu --version`, **the presence of the 0.1.7 `execute`/`resolve` seam**, Nu builtin/table/external runs, non-zero exit reporting, the foreign-shell refusal, **the dialect preflight refusing `2>&1` and `$x = 1` with the Nushell spelling**, **a failed call carrying a `Nushell hint`**, **a background handle that starts, kills, and settles as `killed`**, the prompt sections (rules, guide, translation table, failure catalogue), the rewritten descriptions (including inside a **preset-scoped** assembly), and the sandbox facts. The CLI it drives is `$DSH_INTEGRATION_CLI`, else the pinned local copy at the sibling `.verify/node_modules/@deepseek-ai/dsh/lib/bin.js` (a verification-only checkout that is not part of this repository), else the global `dsh` on PATH.
 
-Known local caveat: under `--mode workspace-write` on this machine (dsh `0.1.5-rc.1`, Windows ACL sandbox) the "runs an external command" assertion fails with empty output, because a confined `^external` does not start. This is **not** caused by this plugin — a pristine checkout of the previous commit fails the same way (20/21); the current version reaches 27/28 with every added assertion passing. Use `danger-full-access` to verify the Nushell behaviour itself.
+Measured local caveat: under `--mode workspace-write` on this machine, the Windows ACL restricted-token runner refuses to let a confined process spawn a **piped** child (`Could not spawn foreground child: 拒绝访问 (os error 5)`), so `^git --version | str trim` cannot run. This is **not** caused by this plugin or by Nushell: disabling `nushell-executor` and restoring the first-party `pwsh-sandbox` row inside the very same composition makes `git --version | Out-String` fail the same way (`程序'git.exe'运行失败：拒绝访问`). A bare external (`^git --version`) runs fine confined. The integration test reports the piped case as a SKIP with that reason instead of a failure, and it PASSes under `danger-full-access`.
 
-`node dev/link-peers.mjs` links the `@deepseek-ai/*` peers out of a local dsh install for a checkout-based test run.
+`node dev/link-peers.mjs` links the `@deepseek-ai/*` peers out of a local dsh install for a checkout-based test run. Note that the executor's budget fields (`cwd`/`timeoutMs`/…) are schemastery `volatile` fields, so **only a schema-resolved config is serviceable**: the unit tests build theirs with `Schema.resolve(raw, NushellExecutor.Config)[0]`, the same path the plugin loader takes.
 
 ## License
 

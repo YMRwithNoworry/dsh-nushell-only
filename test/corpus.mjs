@@ -5,8 +5,8 @@
  * Every entry was run through the installed Nushell (`nu --no-config-file -c`,
  * 0.115.1) while this list was written:
  *
- * - a {@link REFUSALS} command fails in Nushell — except the `stderr-as-word`
- *   family, which is worse than failing (see {@link SILENT_BUT_WRONG});
+ * - a {@link REFUSALS} command fails in Nushell — except the "silently wrong"
+ *   families, which are worse than failing (see {@link SILENT_BUT_WRONG});
  * - an {@link ALLOWED} command is valid Nushell and must never be refused.
  *
  * `test/nu-accepts.test.mjs` re-checks both claims against the Nushell on the
@@ -54,7 +54,6 @@ export const REFUSALS = [
   ['ls | each { |f| Get-Content $f.name }', 'powershell-cmdlet'],
   ['glob "**/ValueInput*.java" "D:/code/MC"', 'glob-extra-positional'],
   ['glob pattern="**/*.java" path="D:/code"', 'glob-named-arguments'],
-  ["ls '~/.dsh/profiles?'", 'path-optional-suffix'],
   ['TOKEN=abc node publish.cjs', 'prefix-assignment'],
   // Habits measured in real sessions that used to reach Nushell untouched:
   // `select name, type` (name_not_found ×17), `-ErrorAction` / `-Force`,
@@ -68,16 +67,23 @@ export const REFUSALS = [
   ['print 1 | %{ $in }', 'percent-sigil'],
   ['node build.cjs | out+err> | str trim', 'pipe-redirect'],
   ['git diff | o> .diff.txt', 'pipe-redirect'],
+  // A bare `>` is comparison in Nushell, so `cmd > out.txt` prints the operator
+  // and the filename as arguments, writes nothing, and exits 0.
+  ['print 1 > out.txt', 'stdout-redirect'],
+  ['ls D:/code >> build.log', 'stdout-redirect'],
+  ['node build.cjs > /dev/null', 'stdout-redirect'],
 ]
 
 /**
  * Refusals whose command Nushell happily *runs*: `2>$null`, `2>nul`, `&>` and
  * friends are not redirections at all in Nushell — they are ordinary words, so
- * the program receives them as extra arguments and stderr is never suppressed.
- * These are the cases where a refusal is most valuable, because the command
- * cannot fail loudly: it silently does the wrong thing.
+ * the program receives them as extra arguments and stderr is never suppressed —
+ * and a bare `>` is comparison, so `cmd > out.txt` prints the operator and the
+ * filename, writes no file, and exits 0. These are the cases where a refusal is
+ * most valuable, because the command cannot fail loudly: it silently does the
+ * wrong thing.
  */
-export const SILENT_BUT_WRONG = new Set(['stderr-as-word'])
+export const SILENT_BUT_WRONG = new Set(['stderr-as-word', 'stdout-redirect'])
 
 /** Valid Nushell that must never be refused — a false positive costs a turn. */
 export const ALLOWED = [
@@ -128,14 +134,51 @@ export const ALLOWED = [
   "print '-ErrorAction is PowerShell'",
   'do { ^git add -- file.txt } | complete',
   // A quoted first word is a string value, not a program: Nushell rejects a
-  // quoted command name outright, so these are pipelines over text. All four
-  // were refused before (as a bash `VAR=value` prefix or a PowerShell cmdlet).
+  // quoted command name outright (`"git" --version` is a parse mismatch), so
+  // these are pipelines over text. All were refused before (as a bash
+  // `VAR=value` prefix or a PowerShell cmdlet).
   '"a=1" | str length',
   "'x=1' | str length",
   '"name=1" | parse "name={value}" | get 0.value',
   '"Get-Content" | str length',
   '"bash" | str length',
   '"grep" | str length',
+  // Quotes, raw strings, and closure parameter lists are data: a parameter named
+  // `sh` / `cmd` / `bash` is ordinary, and a raw string may contain `; bash -c`.
+  '[1 2] | each { |sh| $sh }',
+  "['git' 'node'] | each { |cmd| ^$cmd --version } | length",
+  'ls | where { |bash| $bash.name }',
+  "print r#'don't; sh -c x'#",
+  'print a&sh',
+  // `glob` operands and wildcard `?` are real Nushell.
+  'glob --depth 2 **/*.txt | length',
+  'glob "**/*.txt" --depth 2 | length',
+  'glob -d 2 **/*.txt | length',
+  'glob --depth (1 + 1) **/*.txt | length',
+  'glob **/*.txt --exclude [**/node_modules/**] | length',
+  'open D:/x/probe1.tx?',
+  "open 'D:/x/probe1.tx?'",
+  // Searching for a word is not writing that word's syntax.
+  '^git grep -n foreach',
+  '^git log -S foreach --oneline -5',
+  '^git log --grep=foreach --oneline',
+  'glob **/foreach*',
+  // Typed declarations, record keys, user-defined names, and external arguments.
+  'mut x: int = 1; $x = 2; print $x',
+  'mut x: list<int> = [1]; $x = [2]; print $x',
+  'let r = { get-content: 1 }; print $r',
+  'def get-content [] { print 1 }; get-content',
+  "^node -e 'console.log(1)' -- -Force",
+  "^node -e 'console.log(1)' -not",
+  // `>` as comparison, in every shape that must keep working.
+  'where size > 1kb',
+  'let n = 3; if $n > 2 { print \'big\' }',
+  'print (2 >= 2)',
+  'ls | where size > 1mb | length',
+  // `?` at the end of a path is a one-character glob wildcard in Nushell (it
+  // expands to `probe1.txt`), so the old dedicated refusal was wrong: only the
+  // "nothing matched" failure needs teaching, and the glob hint does that.
+  "ls '~/.dsh/profiles?'",
   // Deprecated *by warning only* on 0.115.1: these run, so they must not be
   // refused — the `deprecated-flag` hint below the output names the replacement.
   // (Their strict replacements `select -First` / `-Last` / `-Unique` do fail.)

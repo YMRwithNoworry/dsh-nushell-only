@@ -1,8 +1,8 @@
-Error: nu::parser::variable_not_found
+Error: nu::parser::env_var_not_var
 
-  x Variable not found.
+  x Use $env.PATH instead of $PATH.
    ,-[source:1:7]
- 1 | print $env:TEMP
-   :       ^^^^|^^^^
-   :           `-- variable not found. 
+ 1 | print $PATH
+   :       ^^|^^
+   :         `-- use $env.PATH instead of $PATH
    `----

@@ -61,7 +61,24 @@
 - `test/fixtures/nu-errors/`：每个失败类一份**真实 stderr 抓取**（`node dev/capture-nu-errors.mjs` 可重新生成），`test/fixtures.test.mjs` 断言每个被抓到的失败类**都必须产出提示**；
 - `test/nu-accepts.test.mjs`：反向对照——被拒的命令必须真的在 `nu` 里失败，被放行的命令必须真的能跑（`nu` 不在 PATH 时整体跳过）。
 
-上一版还因此修掉三类真实误判：`;# 2>&1` 这类注释被当成重定向；能跑通的 `str downcase` / `get -i` 被当成硬错误拦下；以及**命令位置上被引号包起来的字符串**（`"a=1" | str length`、`"Get-Content" | str length`）被当成 bash 的 `VAR=value` 前缀或 PowerShell cmdlet——Nushell 本身不接受"带引号的命令名"（`'bash' -c 'echo hi'` 是 `parse_mismatch`），所以那种位置的引号内容一律是数据。
+这套"双向对照"测试已经修掉 12 类真实误判——都是 `nu` 能跑通、插件却拒绝的命令：
+
+| 误判 | 例子 | 真实原因 |
+|---|---|---|
+| 注释边界判断过窄 | `print 1;# 说明里提到 2>&1` | `#` 在 token 边界就开注释（`;#`、`{#`、`(#`、`[#`、`\|#` 都算） |
+| 把"只警告"的过时写法当硬错误 | `str downcase`、`get -i` | Nu 只发 deprecation 警告、命令照跑；挡下能跑的命令等于白费一轮 |
+| 命令位置上的带引号字符串被当成程序名 | `"a=1" \| str length`、`"Get-Content" \| str length` | Nu 不接受"带引号的命令名"（`'bash' -c 'echo hi'` 是 `parse_mismatch`），引号内容一律是数据 |
+| 闭包参数被当成程序名 | `[1 2] \| each { \|sh\| $sh }`、`['git' 'node'] \| each { \|cmd\| ^$cmd --version }` | 守卫按 `\|` 切语句，把 `{ \|sh\| … }` 的参数当成"要交给 sh" |
+| 裸词里的 `&` 被当分隔符 | `print a&sh` | `a&sh` 在 Nu 里是一个裸词，`&` 只有独立成词时才分隔 |
+| 守卫不认识 raw string | `print r#'don't; sh -c x'#` | 里面的 `'` 让扫描器错位，`; sh -c x` 看起来像 handoff |
+| `glob` 把 flag 的操作数当第二个 pattern | `glob --depth 2 **/*.txt` | 拒绝文本自己推荐的写法被自己拒了 |
+| 路径结尾的 `?` | `open D:/x/probe1.tx?` | `?` 在 Nu 里是**单字符通配符**（旧的"`?` 不是通配符"文案本身是错的），规则已删除，只保留提示 |
+| 带类型标注的 `mut`/`let` | `mut x: int = 1; $x = 2` | 声明名正则要求 `=` 紧跟名字，`:` 标注让它失效 |
+| `foreach` 未锚定到命令位置 | `^git grep -n foreach`、`glob **/foreach*` | 搜索这个词是正常操作，被当成 PowerShell 关键字 |
+| 规则不看 `^外部命令` 参数 | `^node -e '…' -- -Force`、`^node … -not` | `^prog` 后面的 flag 属于那个程序，不属于 Nu |
+| 命令位置扫描命中数据/自定义名 | `let r = { get-content: 1 }`、`def get-content [] { … }; get-content` | record 的键、用户自己定义的命令名 |
+
+同时补上此前漏掉的一类**静默误读**（和 `2>$null` 同性质）：裸 `>` 在 Nu 里是比较运算符，`cmd > out.txt` 会把 `>` 和文件名当作两个参数、退出码 0、**不写文件**——现在由 `stdout-redirect` 规则拦下，而 `where size > 1kb`、`if $n > 2 { … }` 这类比较不受影响。
 
 ## 安装
 

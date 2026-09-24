@@ -58,7 +58,24 @@ Those habits live in `lib/dialect.js` as a rule table (refuse) and an error-code
 - `test/fixtures/nu-errors/` — a captured stderr per failure class (regenerate with `node dev/capture-nu-errors.mjs`), and `test/fixtures.test.mjs` fails if any captured class produces no hint;
 - `test/nu-accepts.test.mjs` — the reverse check: a refused command must really fail in `nu`, and an allowed one must really run (skipped when `nu` is not on PATH).
 
-That check is what removed three real false positives: `;# 2>&1` (a trailing comment, parsed as a redirect), the deprecated-but-working `str downcase` / `get -i`, and a **quoted string in command position** (`"a=1" | str length`, `"Get-Content" | str length`), which the tokenizer read as a bash `VAR=value` prefix or a PowerShell cmdlet — Nushell itself refuses a quoted command name (`'bash' -c 'echo hi'` is `nu::parser::parse_mismatch`), so a quoted first word is always data.
+That check has removed twelve classes of real false positive — commands `nu` runs and the plugin refused anyway:
+
+| Wrongly refused | Example | Why it was wrong |
+|---|---|---|
+| A comment boundary judged too narrowly | `print 1;# note about 2>&1` | `#` opens a comment at a token boundary, including `;#`, `{#`, `(#`, `[#`, `\|#` |
+| A deprecated-but-working spelling treated as fatal | `str downcase`, `get -i` | Nushell only warns and runs it; blocking a working command wastes a turn |
+| A quoted string in command position | `"a=1" \| str length`, `"Get-Content" \| str length` | Nushell rejects a quoted command name (`'bash' -c 'echo hi'` is a parse mismatch), so a quoted first word is data |
+| A closure parameter read as a program | `[1 2] \| each { \|sh\| $sh }`, `['git' 'node'] \| each { \|cmd\| ^$cmd --version }` | the guard splits statements on `\|`, so `{ \|sh\| … }`'s parameter looked like a handoff to `sh` |
+| `&` inside a bare word | `print a&sh` | `a&sh` is one word in Nushell; `&` separates only when it stands alone |
+| Raw strings unknown to the guard | `print r#'don't; sh -c x'#` | the inner `'` desynchronised the scanner, and `; sh -c x` looked like a handoff |
+| `glob` counting a flag's operand as a second pattern | `glob --depth 2 **/*.txt` | the refusal text itself recommended that spelling |
+| `?` at the end of a path | `open D:/x/probe1.tx?` | `?` *is* a one-character glob wildcard in Nushell (the old "not a wildcard" wording was simply wrong); the rule is gone, the hint stays |
+| Typed `mut` / `let` | `mut x: int = 1; $x = 2` | the declared-name regex required `=` right after the name |
+| `foreach` not anchored to command position | `^git grep -n foreach`, `glob **/foreach*` | searching for that word is ordinary work |
+| Rules ignoring `^external` arguments | `^node -e '…' -- -Force`, `^node … -not` | flags after `^prog` belong to that program |
+| The command-position scan hitting data or user-defined names | `let r = { get-content: 1 }`, `def get-content [] { … }; get-content` | a record key and the model's own `def` are not cmdlets |
+
+It also added a rule for a silent misread the suite had missed (the same class as `2>$null`): a bare `>` is *comparison* in Nushell, so `cmd > out.txt` passes the operator and the filename as arguments, exits 0, and **writes no file** — `stdout-redirect` refuses that, while `where size > 1kb` and `if $n > 2 { … }` keep working.
 
 ## Install
 

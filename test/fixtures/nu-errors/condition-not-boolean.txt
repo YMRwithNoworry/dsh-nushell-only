@@ -1,0 +1,8 @@
+Error: nu::shell::cant_convert
+
+  x Can't convert to boolean.
+   ,-[source:1:4]
+ 1 | if [ -f probe1.txt ] { print 'yes' }
+   :    ^^^^^^^^|^^^^^^^^
+   :            `-- can't convert list<string> to boolean
+   `----

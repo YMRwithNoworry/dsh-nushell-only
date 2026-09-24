@@ -59,13 +59,14 @@ test('the known "runs anyway" family is exactly the one that is documented', { s
   // of failing: worth pinning down, because the temptation later is to "fix" the
   // rule by deleting it once someone notices the command exits 0. Each probe is
   // a command whose ONLY problem is the redirect, so exit 0 is meaningful.
-  const probes = ['print 1 2>$null', 'print "a" 2>/dev/null', 'print 1 2>nul', 'print 1 &> out.txt']
+  const probes = ['print 1 2>$null', 'print "a" 2>/dev/null', 'print 1 2>nul', 'print 1 &> out.txt', 'print 1 > out.txt', 'print 1 >> build.log']
   const wrong = []
   for (const command of probes) {
     const result = await runNu(command)
     if (result.code !== 0) wrong.push(`${JSON.stringify(command)} no longer runs in Nushell (exit ${result.code})`)
-    if (findDialectIssue(command)?.id !== 'stderr-as-word') {
-      wrong.push(`${JSON.stringify(command)} is no longer refused as stderr-as-word`)
+    const rule = findDialectIssue(command)?.id
+    if (rule !== 'stderr-as-word' && rule !== 'stdout-redirect') {
+      wrong.push(`${JSON.stringify(command)} is no longer refused as a silent redirect (got ${rule ?? 'allowed'})`)
     }
   }
   assert.deepEqual(wrong, [], `the "silently wrong" family changed:\n${wrong.join('\n')}`)
